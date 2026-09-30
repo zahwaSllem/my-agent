@@ -2,6 +2,12 @@ import express from "express";
 import cors from "cors";
 import { GoogleGenAI, Type } from "@google/genai";
 
+
+import { createClient } from "@supabase/supabase-js";
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const app = express();
 app.use(cors());
@@ -104,6 +110,18 @@ async function runTool(name, args) {
   if (name === "getCurrentTime") return getCurrentTime();
   if (name === "getWeather") return await getWeather(args.city);
   if (name === "searchWeb") return await searchWeb(args.query);
+
+
+  if (name === "saveTasks") {
+  const { error } = await supabase.from("tasks").insert(args.tasks);
+  if (error) return { error: error.message };
+  return { success: true, saved: args.tasks.length };
+}
+if (name === "getTasks") {
+  const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
+  if (error) return { error: error.message };
+  return { tasks: data };
+}
   return { error: "Unknown tool" };
 }
 
@@ -135,6 +153,36 @@ const tools = [{
       query: { type: Type.STRING, description: "Search query in English" },
     },
     required: ["query"],
+  },
+},
+
+{
+  name: "saveTasks",
+  description: "Save a list of tasks to the database after the user confirms them",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      tasks: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            text: { type: Type.STRING },
+            priority: { type: Type.STRING, description: "high, medium, or low" },
+            status: { type: Type.STRING, description: "always 'todo'" },
+          },
+        },
+      },
+    },
+    required: ["tasks"],
+  },
+},
+{
+  name: "getTasks",
+  description: "Get all saved tasks from the database",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {},
   },
 },
 
