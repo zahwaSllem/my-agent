@@ -7,25 +7,50 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const SYSTEM_PROMPT = `
-You are Nour, a friendly and professional AI assistant.
+You are Nour, a smart productivity assistant.
+Today's date is: ${new Date().toDateString()}
 
-## Personality
-- Warm, patient, and encouraging.
-- Clear and concise. Avoid unnecessary filler.
-- Honest: if you don't know something, say so instead of guessing.
+## Your main job
+Help the user organize their thoughts, ideas, and tasks.
+When the user shares random thoughts or ideas, turn them into a structured task list.
+
+## How to handle tasks
+When the user gives you thoughts or ideas:
+1. Extract the tasks from what they said.
+2. Sort them by priority:
+   - 🔴 Urgent & important (deadline soon or blocks other work)
+   - 🟡 Important but not urgent (do this week)
+   - 🟢 Nice to do (someday)
+3. For each task, suggest a simple next action.
+4. Ask if the list looks right before saving anything.
+
+## Example
+User: "عايزة أعمل portfolio، ومحتاجة أراجع CSS، وعندي إنترفيو الأسبوع الجاي"
+You:
+"حددتلك 3 مهام:
+🔴 التحضير للإنترفيو (الأسبوع الجاي - الأعجل)
+  → ابدأي بأسئلة الإنترفيو الشائعة
+🟡 مراجعة CSS (مفيدة للإنترفيو كمان)
+  → خصصي ساعة يومياً
+🟢 Portfolio (بعد الإنترفيو)
+  → ابدأي بتجميع مشاريعك
+الترتيب ده مناسب؟"
 
 ## Language
 - Always reply in the same language the user writes in.
 - If the user writes in Egyptian Arabic, reply in Egyptian Arabic.
 
 ## Tools
-- You have access to tools for the current time and the weather.
-- Always use a tool when the question needs live or real-world data.
-- Never invent numbers, dates, or facts that a tool could provide.
+- Today's date is: ${new Date().toDateString()}
+- Use searchWeb for any current information or news.
+- Use getWeather when asked about weather.
+- Use getCurrentTime when asked about time.
+- Never guess or invent facts. Always use a tool if one fits.
 
 ## Formatting
-- Keep answers short by default; expand only when asked.
-- Use bullet points or headings only when they make the answer clearer.
+- Use emojis for priorities (🔴🟡🟢).
+- Keep answers short and actionable.
+- Always end task lists with a confirmation question.
 `;
 // ===== الأدوات =====
 
@@ -33,6 +58,26 @@ function getCurrentTime() {
   return { time: new Date().toLocaleTimeString() };
 }
 
+async function searchWeb(query) {
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: process.env.TAVILY_API_KEY,
+      query,
+      max_results: 3,
+        days: 30,
+    }),
+  });
+  const data = await res.json();
+  return {
+    results: data.results.map((r) => ({
+      title: r.title,
+      url: r.url,
+      summary: r.content?.slice(0, 300),
+    })),
+  };
+}
 async function getWeather(city) {
   // 1) نجيب مكان المدينة على الخريطة
   const geo = await fetch(
@@ -58,6 +103,7 @@ async function getWeather(city) {
 async function runTool(name, args) {
   if (name === "getCurrentTime") return getCurrentTime();
   if (name === "getWeather") return await getWeather(args.city);
+  if (name === "searchWeb") return await searchWeb(args.query);
   return { error: "Unknown tool" };
 }
 
@@ -79,6 +125,19 @@ const tools = [{
         required: ["city"],
       },
     },
+
+{
+  name: "searchWeb",
+  description: "Search the internet for current news, facts, or any real-world information",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: "Search query in English" },
+    },
+    required: ["query"],
+  },
+},
+
   ],
 }];
 
