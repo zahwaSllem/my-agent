@@ -113,9 +113,14 @@ async function runTool(name, args) {
 
 
   if (name === "saveTasks") {
-  const { error } = await supabase.from("tasks").insert(args.tasks);
-  if (error) return { error: error.message };
-  return { success: true, saved: args.tasks.length };
+  try {
+    const { error } = await supabase.from("tasks").insert(args.tasks);
+    if (error) console.error("Supabase insert failed:", error.message);
+  } catch (e) {
+    console.error("Supabase insert failed:", e.message);
+  }
+  // Always return the tasks so the client can keep them, even if Supabase failed
+  return { success: true, saved: args.tasks.length, tasks: args.tasks };
 }
 if (name === "getTasks") {
   const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
@@ -202,6 +207,8 @@ app.post("/chat", async (req, res) => {
       parts: [{ text: m.text }],
     }));
 
+    let savedTasks = null;
+
     while (true) {
       const r = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite",
@@ -214,6 +221,7 @@ app.post("/chat", async (req, res) => {
         console.log("Agent is using tool:", call.name, call.args);
 
         const result = await runTool(call.name, call.args);
+        if (call.name === "saveTasks" && result.tasks) savedTasks = result.tasks;
 
         contents.push(r.candidates[0].content);
         contents.push({
@@ -221,7 +229,7 @@ app.post("/chat", async (req, res) => {
           parts: [{ functionResponse: { name: call.name, id: call.id, response: result } }],
         });
       } else {
-        return res.json({ reply: r.text });
+        return res.json({ reply: r.text, ...(savedTasks && { tasks: savedTasks }) });
       }
     }
   } catch (err) {
