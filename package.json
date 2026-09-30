@@ -1,0 +1,23 @@
+{
+  "name": "my-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+"scripts": {
+  "start": "node --env-file-if-exists=.env server.js",
+  "dev": "node --watch --env-file-if-exists=.env server.js"
+},
+"engines": {
+  "node": ">=22"
+},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
+    "@google/genai": "^2.24.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
