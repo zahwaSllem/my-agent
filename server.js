@@ -123,9 +123,13 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, (err) => {
+    if (err) return console.error("Server error:", err.message);
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-app.listen(PORT, (err) => {
-  if (err) return console.error("Server error:", err.message);
-  console.log(`Server running on port ${PORT}`);
-});
+// لـ Vercel: هو اللي بيشغّل السيرفر بطريقته
+export default app;
