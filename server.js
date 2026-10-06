@@ -106,30 +106,45 @@ async function getWeather(city) {
 }
 
 // بيشغّل الأداة اللي الموديل طلبها
-async function runTool(name, args) {
+async function runTool(name, args, userId) {
   if (name === "getCurrentTime") return getCurrentTime();
   if (name === "getWeather") return await getWeather(args.city);
   if (name === "searchWeb") return await searchWeb(args.query);
 
 
   if (name === "saveTasks") {
-  try {
-    const { error } = await supabase.from("tasks").insert(args.tasks);
-    if (error) console.error("Supabase insert failed:", error.message);
-  } catch (e) {
-    console.error("Supabase insert failed:", e.message);
-  }
+  const rows = args.tasks.map((t) => ({
+    user_id: userId,
+    title: t.text,
+    priority: t.priority,
+    status: t.status,
+  }));
+  const { error } = await supabase.from("tasks").insert(rows);
+  if (error) console.error("Supabase insert failed:", error.message);
   // Always return the tasks so the client can keep them, even if Supabase failed
-  return { success: true, saved: args.tasks.length, tasks: args.tasks };
-}
-if (name === "getTasks") {
-  const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
-  if (error) return { error: error.message };
-  return { tasks: data };
-}
-  return { error: "Unknown tool" };
+  return { success: !error, saved: error ? 0 : rows.length, tasks: args.tasks };
 }
 
+if (name === "getTasks") {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) return { error: error.message };
+  return { tasks: data.map((t) => ({ ...t, text: t.title })) };
+}
+ return { error: "Unknown tool" };
+}
+
+
+
+async function getUser(req) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return null;
+  const { data, error } = await supabase.auth.getUser(token);
+  return error ? null : data.user;
+}
 // وصف الأدوات للموديل
 const tools = [{
   functionDeclarations: [
@@ -202,6 +217,10 @@ app.get("/", (req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
+    // 1) نتأكد إن في مستخدم مسجّل دخول
+    const user = await getUser(req);
+    if (!user) return res.status(401).json({ reply: "لازم تسجّلي دخول الأول." });
+
     const contents = req.body.messages.map((m) => ({
       role: m.role,
       parts: [{ text: m.text }],
@@ -213,14 +232,15 @@ app.post("/chat", async (req, res) => {
       const r = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite",
         contents,
-          config: { tools, systemInstruction: SYSTEM_PROMPT },
+        config: { tools, systemInstruction: SYSTEM_PROMPT },
       });
 
       if (r.functionCalls && r.functionCalls.length > 0) {
         const call = r.functionCalls[0];
         console.log("Agent is using tool:", call.name, call.args);
 
-        const result = await runTool(call.name, call.args);
+        // 2) نمرّر user.id للأداة
+        const result = await runTool(call.name, call.args, user.id);
         if (call.name === "saveTasks" && result.tasks) savedTasks = result.tasks;
 
         contents.push(r.candidates[0].content);
